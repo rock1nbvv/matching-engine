@@ -1,82 +1,99 @@
 package org.vbaklaiev;
 
-import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
+
 /**
- * Price Priority	Efficient with TreeMap (O(log n))
- * Time Priority	Maintained by LinkedList at each price
- * Order Cancellation	Fast: O(1) with orderId → OrderRef map
- * Matching Speed	O(log n) to find best price + O(1) to remove from price level
- * Insert/Match	O(log n) + O(1)
+ *
+ Feature	Logic
+ Price priority	TreeMap: sorted ascending (sell) or descending (buy)
+ Time priority	LinkedList: appends at tail, removes from head
+ Matching	Iterates TreeMap + peeks queue
+ Cancellation	O(1) via orderIndex map (with username check)
+ Partial fills	Handled naturally by reducing volume
  */
-//Internally, a PriorityQueue is implemented as a binary heap.
-//It guarantees that the head (peek/poll) is always the highest-priority element (min or max depending on comparator).
-//
-//But the rest of the elements are not in sorted order when you iterate.
-public class TreeMapOrderBook {
-    // BUY book: highest price first; SELL book: lowest price first
-    private final TreeMap<BigDecimal, LinkedList<Order>> buyBook = new TreeMap<>(Comparator.reverseOrder());
-    private final TreeMap<BigDecimal, LinkedList<Order>> sellBook = new TreeMap<>();
-    // Index to access and remove an order in O(1)
-    /**
-     * Suppose you want to cancel an order by its orderId. Without an index:
-     * You must search every queue at every price level.
-     * This is O(n) or worse, depending on depth and volume.
-     * High cancellation frequency would make performance degrade quickly.
-     */
-    private final Map<String, OrderRef> orderIndex = new HashMap<>();// for efficient order cancellation and modification by order ID.
+public class TreeMapOrderBook implements OrderBook {
 
+    private final TreeMap<Integer, LinkedList<Order>> buyBook = new TreeMap<>(Comparator.reverseOrder());
+    private final TreeMap<Integer, LinkedList<Order>> sellBook = new TreeMap<>();
+    private final Map<Long, OrderRef> orderIndex = new HashMap<>();
 
-    // Internal reference to locate an order in the book efficiently
     private static class OrderRef {
-        BigDecimal price;              // Price level (key in TreeMap)
-        LinkedList<Order> queue;       // Queue at that price level
-        Order order;                   // Reference to the actual order
+        int price;
+        LinkedList<Order> queue;
+        Order order;
     }
 
-    public void addOrder(Order order) {
-        TreeMap<BigDecimal, LinkedList<Order>> book = (order.side == Order.Side.BUY) ? buyBook : sellBook;
-        // Get or create the price level (queue of orders)
-        LinkedList<Order> queue = book.computeIfAbsent(order.price, k -> new LinkedList<>());
-        queue.addLast(order);
+    @Override
+    public List<Trade> submitOrder(Order incoming) {
+        List<Trade> trades = new ArrayList<>();
+        TreeMap<Integer, LinkedList<Order>> book = (incoming.side == Side.BUY) ? sellBook : buyBook;
 
-        OrderRef ref = new OrderRef();
-        ref.price = order.price;
-        ref.queue = queue;
-        ref.order = order;
-        orderIndex.put(order.id, ref);
+        Iterator<Map.Entry<Integer, LinkedList<Order>>> it = book.entrySet().iterator();
+        while (incoming.volume > 0 && it.hasNext()) {
+            Map.Entry<Integer, LinkedList<Order>> entry = it.next();
+            int bookPrice = entry.getKey();
+
+            boolean priceMatch = incoming.side == Side.BUY
+                    ? incoming.price >= bookPrice
+                    : incoming.price <= bookPrice;
+            if (!priceMatch) break;
+
+            LinkedList<Order> queue = entry.getValue();
+            while (incoming.volume > 0 && !queue.isEmpty()) {
+                Order resting = queue.peekFirst();
+                int tradedVolume = Math.min(incoming.volume, resting.volume);
+                trades.add(new Trade(
+                        incoming.side == Side.BUY ? incoming.username : resting.username,
+                        incoming.side == Side.BUY ? resting.username : incoming.username,
+                        resting.price,
+                        tradedVolume
+                ));
+
+                incoming.volume -= tradedVolume;
+                resting.volume -= tradedVolume;
+
+                if (resting.volume == 0) {
+                    queue.pollFirst();
+                    orderIndex.remove(resting.id);
+                }
+            }
+
+            if (queue.isEmpty()) it.remove();
+        }
+
+        if (incoming.volume > 0) {
+            TreeMap<Integer, LinkedList<Order>> ownBook = incoming.side == Side.BUY ? buyBook : sellBook;
+            LinkedList<Order> queue = ownBook.computeIfAbsent(incoming.price, k -> new LinkedList<>());
+            queue.addLast(incoming);
+
+            OrderRef ref = new OrderRef();
+            ref.price = incoming.price;
+            ref.queue = queue;
+            ref.order = incoming;
+            orderIndex.put(incoming.id, ref);
+        }
+
+        return trades;
     }
 
-    public boolean cancelOrder(String orderId) {
-        // Look up the order location
+    @Override
+    public void cancelOrder(String username, long orderId) {
         OrderRef ref = orderIndex.remove(orderId);
-        if (ref == null) return false;
+        if (ref == null || !ref.order.username.equals(username)) return;
 
         boolean removed = ref.queue.remove(ref.order);
-        if (ref.queue.isEmpty()) {
-            TreeMap<BigDecimal, LinkedList<Order>> book = ref.order.side == Order.Side.BUY ? buyBook : sellBook;
+        if (removed && ref.queue.isEmpty()) {
+            TreeMap<Integer, LinkedList<Order>> book =
+                    ref.order.side == Side.BUY ? buyBook : sellBook;
             book.remove(ref.price);
         }
-        return removed;
-    }
-
-    public Order matchNext(Order.Side side) {
-        // If BUY is incoming, match against SELL book (lowest price)
-        TreeMap<BigDecimal, LinkedList<Order>> book = (side == Order.Side.BUY) ? sellBook : buyBook;
-        if (book.isEmpty()) return null;
-
-        Map.Entry<BigDecimal, LinkedList<Order>> best = book.firstEntry();
-        LinkedList<Order> queue = best.getValue();
-        Order order = queue.pollFirst();
-        if (queue.isEmpty()) {
-            book.remove(best.getKey());
-        }
-        if (order != null) orderIndex.remove(order.id);
-        return order;
     }
 }

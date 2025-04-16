@@ -24,6 +24,8 @@ public class Main {
 //
 //        System.out.println("Tree match: " + orderBook.matchNext(Side.BUY).id);
 
+
+        PQ
         OrderBook orderBook = new PriorityQueueOrderBook();
 
         // Add a sell order: Alice wants to sell 100 units at $50
@@ -44,5 +46,16 @@ public class Main {
         // Cancel remaining order (should be Alice's residual 50 units at $50)
         orderBook.cancelOrder("alice", 1L);
         System.out.println("Alice's remaining order cancelled.");
+
+
+
+
+        //TREEMAP
+        OrderBook TrorderBook = new TreeMapOrderBook();
+
+        TrorderBook.submitOrder(new Order(1L, "alice", 100, 10, Side.SELL));
+        TrorderBook.submitOrder(new Order(2L, "bob", 105, 5, Side.BUY)); // matches Alice
+
+        TrorderBook.cancelOrder("alice", 1L); // cancels remaining quantity (if any)
     }
 }

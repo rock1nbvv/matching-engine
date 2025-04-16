@@ -7,6 +7,13 @@ import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Enforces price-time priority using PriorityQueue with Comparator.
+ * Matches against the best priced opposite orders.
+ * Efficient insert/match, O(n) cancellation due to heap scan.
+ * Trade contains correct buyer/seller names, price, and volume.
+ */
+
 public class PriorityQueueOrderBook implements OrderBook {
 
     private final PriorityQueue<Order> buyBook = new PriorityQueue<>(
