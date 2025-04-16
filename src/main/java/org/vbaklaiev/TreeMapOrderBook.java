@@ -13,8 +13,11 @@ import java.util.TreeMap;
  * Order Cancellation	Fast: O(1) with orderId → OrderRef map
  * Matching Speed	O(log n) to find best price + O(1) to remove from price level
  * Insert/Match	O(log n) + O(1)
- *
  */
+//Internally, a PriorityQueue is implemented as a binary heap.
+//It guarantees that the head (peek/poll) is always the highest-priority element (min or max depending on comparator).
+//
+//But the rest of the elements are not in sorted order when you iterate.
 public class TreeMapOrderBook {
     // BUY book: highest price first; SELL book: lowest price first
     private final TreeMap<BigDecimal, LinkedList<Order>> buyBook = new TreeMap<>(Comparator.reverseOrder());
@@ -31,9 +34,9 @@ public class TreeMapOrderBook {
 
     // Internal reference to locate an order in the book efficiently
     private static class OrderRef {
-        BigDecimal price;
-        LinkedList<Order> queue;
-        Order order;
+        BigDecimal price;              // Price level (key in TreeMap)
+        LinkedList<Order> queue;       // Queue at that price level
+        Order order;                   // Reference to the actual order
     }
 
     public void addOrder(Order order) {
