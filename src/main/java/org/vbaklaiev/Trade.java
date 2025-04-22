@@ -1,6 +1,6 @@
 package org.vbaklaiev;
 
-class Trade {
+public class Trade {
     String buyer;
     String seller;
     int price;

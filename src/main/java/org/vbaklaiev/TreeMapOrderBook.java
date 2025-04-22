@@ -32,32 +32,32 @@ public class TreeMapOrderBook implements OrderBook {
     }
 
     @Override
-    public List<Trade> submitOrder(Order incoming) {
+    public List<Trade> submitOrder(Order order) {
         List<Trade> trades = new ArrayList<>();
-        TreeMap<Integer, LinkedList<Order>> book = (incoming.side == Side.BUY) ? sellBook : buyBook;
+        TreeMap<Integer, LinkedList<Order>> book = (order.side == Side.BUY) ? sellBook : buyBook;
 
         Iterator<Map.Entry<Integer, LinkedList<Order>>> it = book.entrySet().iterator();
-        while (incoming.volume > 0 && it.hasNext()) {
+        while (order.volume > 0 && it.hasNext()) {
             Map.Entry<Integer, LinkedList<Order>> entry = it.next();
             int bookPrice = entry.getKey();
 
-            boolean priceMatch = incoming.side == Side.BUY
-                    ? incoming.price >= bookPrice
-                    : incoming.price <= bookPrice;
+            boolean priceMatch = order.side == Side.BUY
+                    ? order.price >= bookPrice
+                    : order.price <= bookPrice;
             if (!priceMatch) break;
 
             LinkedList<Order> queue = entry.getValue();
-            while (incoming.volume > 0 && !queue.isEmpty()) {
+            while (order.volume > 0 && !queue.isEmpty()) {
                 Order resting = queue.peekFirst();
-                int tradedVolume = Math.min(incoming.volume, resting.volume);
+                int tradedVolume = Math.min(order.volume, resting.volume);
                 trades.add(new Trade(
-                        incoming.side == Side.BUY ? incoming.username : resting.username,
-                        incoming.side == Side.BUY ? resting.username : incoming.username,
+                        order.side == Side.BUY ? order.username : resting.username,
+                        order.side == Side.BUY ? resting.username : order.username,
                         resting.price,
                         tradedVolume
                 ));
 
-                incoming.volume -= tradedVolume;
+                order.volume -= tradedVolume;
                 resting.volume -= tradedVolume;
 
                 if (resting.volume == 0) {
@@ -69,16 +69,16 @@ public class TreeMapOrderBook implements OrderBook {
             if (queue.isEmpty()) it.remove();
         }
 
-        if (incoming.volume > 0) {
-            TreeMap<Integer, LinkedList<Order>> ownBook = incoming.side == Side.BUY ? buyBook : sellBook;
-            LinkedList<Order> queue = ownBook.computeIfAbsent(incoming.price, k -> new LinkedList<>());
-            queue.addLast(incoming);
+        if (order.volume > 0) {
+            TreeMap<Integer, LinkedList<Order>> ownBook = order.side == Side.BUY ? buyBook : sellBook;
+            LinkedList<Order> queue = ownBook.computeIfAbsent(order.price, k -> new LinkedList<>());
+            queue.addLast(order);
 
             OrderRef ref = new OrderRef();
-            ref.price = incoming.price;
+            ref.price = order.price;
             ref.queue = queue;
-            ref.order = incoming;
-            orderIndex.put(incoming.id, ref);
+            ref.order = order;
+            orderIndex.put(order.id, ref);
         }
 
         return trades;
